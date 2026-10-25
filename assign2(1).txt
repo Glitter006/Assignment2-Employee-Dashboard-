@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crew Board</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+  <style>
+    body { font-family: 'DM Sans', system-ui, sans-serif; background: #f2f4f0; color: #12261f; }
+    .display { font-family: 'Bricolage Grotesque', 'DM Sans', system-ui, sans-serif; letter-spacing: -0.02em; }
+    :focus-visible { outline: 2px solid #12261f; outline-offset: 2px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+    const API_URL = 'https://jsonplaceholder.typicode.com/users';
+    const TINTS = ['bg-lime-200', 'bg-sky-200', 'bg-rose-200', 'bg-amber-200', 'bg-violet-200', 'bg-teal-200'];
+
+    const initials = (name) =>
+      name.split(' ').filter((p) => !/^(mr|mrs|ms|dr)\.?$/i.test(p)).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
+
+    function Stat({ value, label }) {
+      return (
+        <div className="rounded-2xl bg-white px-5 py-4 border border-emerald-950/10">
+          <p className="display text-3xl font-bold">{value}</p>
+          <p className="text-sm text-emerald-950/60">{label}</p>
+        </div>
+      );
+    }
+
+    function App() {
+      const [people, setPeople] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState('');
+      const [query, setQuery] = useState('');
+      const [company, setCompany] = useState('all');
+      const [sort, setSort] = useState('az');
+      const [layout, setLayout] = useState('grid');
+      const [openId, setOpenId] = useState(null);
+
+      useEffect(() => {
+        const controller = new AbortController();
+        (async () => {
+          try {
+            const res = await fetch(API_URL, { signal: controller.signal });
+            if (!res.ok) throw new Error(`Could not load people (error ${res.status}).`);
+            const data = await res.json();
+            setPeople(data.map((u) => ({
+              id: u.id, name: u.name, email: u.email, phone: u.phone, website: u.website,
+              company: u.company.name, city: u.address.city,
+            })));
+          } catch (err) {
+            if (err.name !== 'AbortError') setError(err.message || 'Could not load people.');
+          } finally {
+            if (!controller.signal.aborted) setLoading(false);
+          }
+        })();
+        return () => controller.abort();
+      }, []);
+
+      const companies = useMemo(() => [...new Set(people.map((p) => p.company))].sort(), [people]);
+      const cityCount = useMemo(() => new Set(people.map((p) => p.city)).size, [people]);
+
+      const shown = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        const list = people.filter(
+          (p) => (company === 'all' || p.company === company) &&
+            (!q || p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q) || p.city.toLowerCase().includes(q))
+        );
+        return list.sort((a, b) => sort === 'az' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name));
+      }, [people, query, company, sort]);
+
+      const field = 'px-3.5 py-2.5 rounded-xl bg-white border border-emerald-950/15 text-sm';
+      const seg = (name) => `px-3 py-1.5 rounded-lg text-sm font-medium ${layout === name ? 'bg-emerald-950 text-white' : 'text-emerald-950/70'}`;
+
+      return (
+        <div className="min-h-screen">
+          <header className="bg-emerald-950 text-white">
+            <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+              <span className="display text-2xl font-bold">Crew<span className="text-lime-300">Board</span></span>
+              <span className="text-sm text-emerald-100/70">Read-only directory</span>
+            </div>
+          </header>
+
+          <main className="max-w-6xl mx-auto px-6 py-10">
+            <h1 className="display text-4xl font-bold">Who’s on the crew</h1>
+            <p className="text-emerald-950/65 mt-2 mb-7">Find a teammate by name, email or city. Select a person to see their details.</p>
+
+            <div className="grid grid-cols-3 gap-3 mb-8">
+              <Stat value={people.length} label="People" />
+              <Stat value={companies.length} label="Companies" />
+              <Stat value={cityCount} label="Cities" />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 mb-6">
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search people"
+                aria-label="Search people" className={`${field} flex-1 min-w-[12rem]`} />
+              <select value={company} onChange={(e) => setCompany(e.target.value)} aria-label="Filter by company" className={field}>
+                <option value="all">All companies</option>
+                {companies.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort people" className={field}>
+                <option value="az">Name A to Z</option>
+                <option value="za">Name Z to A</option>
+              </select>
+              <div className="flex p-1 rounded-xl bg-white border border-emerald-950/15">
+                <button onClick={() => setLayout('grid')} className={seg('grid')}>Grid</button>
+                <button onClick={() => setLayout('list')} className={seg('list')}>List</button>
+              </div>
+            </div>
+
+            {loading && <p className="text-emerald-950/60">Loading the crew…</p>}
+            {error && <p role="alert" className="rounded-xl bg-rose-100 text-rose-900 p-4">{error} Check your connection, then refresh.</p>}
+            {!loading && !error && shown.length === 0 && (
+              <p className="text-emerald-950/60">No one matches those filters. Clear the search or pick “All companies”.</p>
+            )}
+
+            <div className={layout === 'grid' ? 'grid sm:grid-cols-2 xl:grid-cols-3 gap-4 items-start' : 'flex flex-col gap-2.5'}>
+              {shown.map((p) => {
+                const open = openId === p.id;
+                return (
+                  <article key={p.id} className="bg-white border border-emerald-950/10 rounded-2xl">
+                    <button onClick={() => setOpenId(open ? null : p.id)} aria-expanded={open}
+                      className="w-full text-left p-4 flex items-center gap-4 rounded-2xl">
+                      <span className={`shrink-0 w-12 h-12 rounded-full grid place-items-center font-bold display ${TINTS[p.id % TINTS.length]}`}>
+                        {initials(p.name)}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold truncate">{p.name}</span>
+                        <span className="block text-sm text-emerald-950/65 truncate">{p.company} · {p.city}</span>
+                      </span>
+                      <span className="text-emerald-950/50 text-sm">{open ? 'Hide' : 'View'}</span>
+                    </button>
+                    {open && (
+                      <dl className="px-4 pb-4 pt-1 ml-16 text-sm grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+                        <dt className="text-emerald-950/55">Email</dt>
+                        <dd><a href={`mailto:${p.email}`} className="text-emerald-800 hover:underline break-all">{p.email}</a></dd>
+                        <dt className="text-emerald-950/55">Phone</dt><dd>{p.phone}</dd>
+                        <dt className="text-emerald-950/55">Website</dt><dd>{p.website}</dd>
+                      </dl>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
